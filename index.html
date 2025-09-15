@@ -111,6 +111,7 @@
         <p class="small">Made with ❤️ by <strong>Dettolborma 😘</strong></p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
           <button class="btn" id="startBtn">Start the little quiz</button>
+          <button class="btn" id="viewLastBtn" style="background:#ffd0e3;color:#6b2b47;border:1px solid rgba(107,43,71,0.06)">View last answers</button>
         </div>
       </div>
     </div>
@@ -148,8 +149,15 @@
             </div>
           </div>
         </div>
-
         <div style="display:flex;gap:12px;align-items:center;"></div>
+
+        <div id="summaryWrap" style="margin-top:12px;max-width:640px;width:100%;display:none;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:8px;align-items:center;justify-content:flex-start;">
+            <button class="btn" id="copyAnswersBtn" style="background:#ffd0e3;color:#6b2b47;border:1px solid rgba(107,43,71,0.06)">Copy answers</button>
+            <span class="small" id="copyStatus" style="display:none;">Copied!</span>
+          </div>
+          <pre id="summaryText" class="small" style="background:rgba(255,255,255,0.8);border:1px solid #ffd0e3;padding:12px;border-radius:10px;white-space:pre-wrap;max-height:220px;overflow:auto;"></pre>
+        </div>
       </div>
     </div>
 
@@ -329,6 +337,8 @@ nextBtn.addEventListener('click', async ()=> {
     // finish
     quiz.classList.add('hidden');
     final.classList.remove('hidden');
+    // save answers to Google Sheets
+    saveAnswersToSheets();
     // small delay then show flap open on click
     setTimeout(()=>{ initEnvelope(); }, 500);
   }
@@ -364,6 +374,8 @@ function initEnvelope(){
       typeText(letterContent, typedText, ()=> {
         // after letter typed, fire confetti
         fireConfetti();
+        // show human-readable summary
+        showSummary();
       });
     }, 650);
   };
@@ -429,6 +441,84 @@ function sparkles(el){
 // restart removed
 
 // music controls removed
+
+/* -------------------------
+   Save answers to Google Sheets
+   ------------------------- */
+function saveAnswersToSheets(){
+  // Replace this URL with your Google Apps Script web app URL
+  const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyaDVOsn7nNzOC5d1zVuNB0qzucH2caCdKU7aoMajYxXoYyOTMjSINpX_434fEwexX_/exec';
+  
+  const data = {
+    timestamp: new Date().toISOString(),
+    answers: answers,
+    questions: questions.map(q => ({ id: q.id, question: q.q }))
+  };
+  // Always keep a local copy for easy viewing later
+  try { localStorage.setItem('quizAnswers_' + Date.now(), JSON.stringify(data)); } catch(_) {}
+  
+  fetch(WEBHOOK_URL, {
+    method: 'POST',
+    mode: 'no-cors', // Required for Google Apps Script
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  }).catch(err => {
+    console.log('Could not save to sheets:', err);
+    // Fallback: save to localStorage
+    localStorage.setItem('quizAnswers_' + Date.now(), JSON.stringify(data));
+  });
+}
+
+/* -------------------------
+   Summary helpers
+   ------------------------- */
+function buildSummaryText(){
+  const lines = questions.map(q => {
+    const a = answers[q.id];
+    return `Q: ${q.q}\nA: ${a ? a : '(blank)'}`;
+  });
+  return lines.join('\n\n');
+}
+
+function showSummary(){
+  const wrap = document.getElementById('summaryWrap');
+  const pre = document.getElementById('summaryText');
+  if(!wrap || !pre) return;
+  pre.textContent = buildSummaryText();
+  wrap.style.display = 'flex';
+}
+
+const copyBtn = document.getElementById('copyAnswersBtn');
+const copyStatus = document.getElementById('copyStatus');
+if(copyBtn){
+  copyBtn.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(buildSummaryText());
+      if(copyStatus){
+        copyStatus.style.display = 'inline';
+        setTimeout(()=> copyStatus.style.display = 'none', 1600);
+      }
+    } catch(e){
+      alert('Copy failed.');
+    }
+  });
+}
+
+const viewLastBtn = document.getElementById('viewLastBtn');
+if(viewLastBtn){
+  viewLastBtn.addEventListener('click', ()=>{
+    const keys = Object.keys(localStorage).filter(k=>k.startsWith('quizAnswers_')).sort();
+    if(keys.length===0){ alert('No saved answers found.'); return; }
+    const last = JSON.parse(localStorage.getItem(keys[keys.length-1])||'{}');
+    const lines = (last.questions||[]).map(q=>{
+      const a = (last.answers||{})[q.id];
+      return `Q: ${q.question}\nA: ${a ? a : '(blank)'}`;
+    });
+    alert(lines.join('\n\n'));
+  });
+}
 
 /* -------------------------
    Confetti (simple)
